@@ -1,2 +1,1 @@
-![alt text](./img.png)
 ![screenshot](img.png)
