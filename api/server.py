@@ -1,43 +1,39 @@
 #!/usr/bin/env python
 import os
-
-from flask import Flask
 from datetime import datetime
+
 from elasticsearch import Elasticsearch
+from flask import Flask, render_template, request, redirect
 from pymongo import MongoClient
 
-
-
 app = Flask(__name__)
-
-
-@app.route('/')
-def todo():
-    es_client = Elasticsearch(
+mongo_client = MongoClient("mongo:27017")
+db = mongo_client["app"]
+notes_collection = db['notes']
+es_client = Elasticsearch(
     ['http://elasticsearch:9200'],  # Use your Elasticsearch host
     verify_certs=False,
     ssl_show_warn=False  # Optional: suppresses warnings about insecure SSL
 )
-    mongo_client = MongoClient("mongo:27017")
 
-    es_client.index(index="my-index-000001", id="45", body={"any": "data", "timestamp": datetime.now()})
-    data = es_client.get(index="my-index-000001", id="45")
+@app.route('/', methods=['GET', 'POST'])
+def todo():
+    if request.method == 'POST':
+        note_content = request.form.get('content')
+        if note_content:
+            result = notes_collection.insert_one({'content': note_content})
+            es_client.index(index="my-index-000001", id=result.inserted_id, body={"content": note_content,
+                                                                                  "timestamp": datetime.now()})
+        return redirect("/")
 
-    db = mongo_client['example_database']
-    collection = db['example_collection']
+    notes = list(notes_collection.find())
+    return render_template('index.html', notes=notes)
 
-    # Insert a document
-    document = {"name": "John Doe", "age": 30}
-    insert_result = collection.insert_one(document)
-    print(f"Inserted document ID: {insert_result.inserted_id}")
 
-    # Retrieve the document
-    retrieved_doc = collection.find_one({"name": "John Doe"})
-    print(f"Retrieved document: {retrieved_doc}")
-
-    mongo_client.close()
-
-    return data
+@app.route('/delete-all', methods=['POST'])
+def remove_all_notes():
+    mongo_client["app"]["notes"].delete_many({})
+    return redirect("/")
 
 
 if __name__ == "__main__":
